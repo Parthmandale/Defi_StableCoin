@@ -62,14 +62,8 @@ contract DSCEngine is ReentrancyGuard {
         i_dsc = DecentralizedStableCoin(dscAddress);
     }
 
-    // function depositCollateralAndMintDsc(
-    //     address tokenCollateralAddress,
-    //     uint256 amountCollateral,
-    //     uint256 amountDscToMint
-    // ) external {}
-
     function depositCollateral(address tokenCollateralAddress, uint256 amountCollateral)
-        external
+        public
         moreThanZero(amountCollateral)
         nonReentrant
         isAllowedToken(tokenCollateralAddress)
@@ -148,5 +142,28 @@ contract DSCEngine is ReentrancyGuard {
         uint256 amount // in WEI
     ) external view returns (uint256) {
         return _getUsdValue(token, amount);
+    }
+
+    function depositCollateralAndMintDsc(
+        address tokenCollateralAddress,
+        uint256 amountCollateral,
+        uint256 amountDscToMint
+    ) external {
+        depositCollateral(tokenCollateralAddress, amountCollateral);
+        mintDsc(amountDscToMint);
+    }
+
+    function redeemCollateral(address tokenCollateralAddress, uint256 amountCollateral)
+        external
+        moreThanZero(amountCollateral)
+        nonReentrant
+    {
+        s_collateralDeposited[msg.sender][tokenCollateralAddress] -= amountCollateral;
+
+        bool success = IERC20(tokenCollateralAddress).transfer(msg.sender, amountCollateral); // why here IERC20 is taking parameter?? because it is an interface
+
+        if (!success) {
+            revert DSCEngine_TransferFailed();
+        }
     }
 }
