@@ -16,6 +16,9 @@ contract DSCEngine is ReentrancyGuard {
     error DSCEngine__BreaksHealthFactor(uint256 healthFactorValue);
     error DSCEngine__MintFailed();
 
+    // error here??
+    DecentralizedStableCoin private immutable i_dsc;
+
     uint256 private constant ADDITIONAL_FEED_PRECISION = 1e10;
     uint256 private constant LIQUIDATION_THRESHOLD = 50;
     uint256 private constant LIQUIDATION_PRECISION = 100;
@@ -46,12 +49,17 @@ contract DSCEngine is ReentrancyGuard {
 
     mapping(address user => uint256 amount) private s_DSCMinted;
 
-    DecentralizedStableCoin private immutable i_dsc;
-
     constructor(address[] memory tokenAddresses, address[] memory priceFeedAddresses, address dscAddress) {
         if (tokenAddresses.length != priceFeedAddresses.length) {
             revert DSCEngine__TokenAddressesAndPriceFeedAddressesAmountsDontMatch();
         }
+        // These feeds will be the USD pairs
+        // For example ETH / USD or MKR / USD
+        for (uint256 i = 0; i < tokenAddresses.length; i++) {
+            s_priceFeeds[tokenAddresses[i]] = priceFeedAddresses[i];
+            s_collateralTokens.push(tokenAddresses[i]);
+        }
+        i_dsc = DecentralizedStableCoin(dscAddress);
     }
 
     // function depositCollateralAndMintDsc(
@@ -125,13 +133,13 @@ contract DSCEngine is ReentrancyGuard {
         return totalCollateralValueInUsd;
     }
 
-    // function _getUsdValue(address token, uint256 amount) private view returns (uint256) {
-    //     AggregatorV3Interface priceFeed = AggregatorV3Interface(s_priceFeeds[token]);
-    //     // (, int256 price,,,) = priceFeed.staleCheckLatestRoundData();
-    //     // 1 ETH = 1000 USD
-    //     // The returned value from Chainlink will be 1000 * 1e8
-    //     // Most USD pairs have 8 decimals, so we will just pretend they all do
-    //     // We want to have everything in terms of WEI, so we add 10 zeros at the end
-    //     return ((uint256(price) * ADDITIONAL_FEED_PRECISION) * amount) / PRECISION;
-    // }
+    function _getUsdValue(address token, uint256 amount) private view returns (uint256) {
+        AggregatorV3Interface priceFeed = AggregatorV3Interface(s_priceFeeds[token]);
+        (, int256 price,,,) = priceFeed.latestRoundData();
+        // 1 ETH = 1000 USD
+        // The returned value from Chainlink will be 1000 * 1e8
+        // Most USD pairs have 8 decimals, so we will just pretend they all do
+        // We want to have everything in terms of WEI, so we add 10 zeros at the end
+        return ((uint256(price) * ADDITIONAL_FEED_PRECISION) * amount) / PRECISION;
+    }
 }

@@ -1,20 +1,18 @@
-// SPDX-License-Identifier: MIT
-
-pragma solidity 0.8.20;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.19;
 
 import {Script} from "forge-std/Script.sol";
 import {HelperConfig} from "./HelperConfig.s.sol";
 import {DecentralizedStableCoin} from "../src/DecentralizedStableCoin.sol";
 import {DSCEngine} from "../src/DSCEngine.sol";
 
-contract deployDSC is Script {
-    HelperConfig config = new HelperConfig();
-
+contract DeployDSC is Script {
     address[] public tokenAddresses;
     address[] public priceFeedAddresses;
 
-    function run() external returns (DecentralizedStableCoin, DSCEngine) {
-        // struct NetworkConfig
+    function run() external returns (DecentralizedStableCoin, DSCEngine, HelperConfig) {
+        HelperConfig helperConfig = new HelperConfig(); // This comes with our mocks!
+
         (address wethUsdPriceFeed, address wbtcUsdPriceFeed, address weth, address wbtc, uint256 deployerKey) =
             helperConfig.activeNetworkConfig();
         tokenAddresses = [weth, wbtc];
@@ -27,7 +25,6 @@ contract deployDSC is Script {
             priceFeedAddresses,
             address(dsc)
         );
-        // now engine has ownership of dsc
         dsc.transferOwnership(address(dscEngine));
         vm.stopBroadcast();
         return (dsc, dscEngine, helperConfig);
