@@ -154,7 +154,7 @@ contract DSCEngine is ReentrancyGuard {
     }
 
     function redeemCollateral(address tokenCollateralAddress, uint256 amountCollateral)
-        external
+        public
         moreThanZero(amountCollateral)
         nonReentrant
     {
@@ -165,5 +165,24 @@ contract DSCEngine is ReentrancyGuard {
         if (!success) {
             revert DSCEngine_TransferFailed();
         }
+    }
+
+    function burnDSC(uint256 amount) public moreThanZero(amount) {
+        s_DSCMinted[msg.sender] -= amount;
+        bool success = i_dsc.transferFrom(msg.sender, address(this), amount);
+
+        if (!success) {
+            revert DSCEngine_TransferFailed();
+        }
+
+        i_dsc.burn(amount);
+        // _revertIfHealthFactorIsBroken(msg.sender);
+    }
+
+    function redeemCollateralForDSC(address tokenCollateralAddress, uint256 amountCollateral, uint256 amountToBurn)
+        external
+    {
+        burnDSC(amountToBurn);
+        redeemCollateral(tokenCollateralAddress, amountCollateral);
     }
 }
