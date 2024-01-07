@@ -26,16 +26,17 @@ contract DSCEngineTest is Test {
         deployer = new DeployDSC();
         (dsc, dsce, config) = deployer.run();
         (ethUsdPriceFeed,, weth,,) = config.activeNetworkConfig();
-        ERC20Mock(weth).mint(user, STARTING_USER_BALANCE);
-        // ERC20Mock(wbtc).mint(user, STARTING_USER_BALANCE);
+        ERC20Mock(weth).mint(user, STARTING_USER_BALANCE); // here weth is the token address
+            // ERC20Mock(wbtc).mint(user, STARTING_USER_BALANCE);
     }
 
     // Test start
 
+    // Testing price feed
     function testGetUsdValue() public {
-        uint256 ethAmount = 15e18; //eath is 2000 usd
-
-        uint256 Excpectedusd = 30000e18; // hardcore
+        uint256 ethAmount = 15e18; //one single eth is 2000 usd
+        //     int256 public constant ETH_USD_PRICE = 2000e8;
+        uint256 Excpectedusd = 30000e18; // hardcoded = 15 * 2000
 
         uint256 actualUsd = dsce.getUsdValue(weth, ethAmount);
 
@@ -44,7 +45,7 @@ contract DSCEngineTest is Test {
 
     function testRevertIfCollateralIsZero() public {
         vm.startPrank(user);
-        ERC20Mock(weth).approve(address(dsce), amountCollateral);
+        ERC20Mock(weth).approve(address(dsce), amountCollateral); // approve function is from openzeppelin in
 
         vm.expectRevert(DSCEngine.DSCEngine__NeedsMoreThanZero.selector);
         dsce.depositCollateral(weth, 0);

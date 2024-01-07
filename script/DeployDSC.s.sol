@@ -25,7 +25,7 @@ contract DeployDSC is Script {
             priceFeedAddresses,
             address(dsc)
         );
-        dsc.transferOwnership(address(dscEngine));
+        dsc.transferOwnership(address(dscEngine)); //  in the last we are transfering the ownership to Wngine contract
         vm.stopBroadcast();
         return (dsc, dscEngine, helperConfig);
     }
