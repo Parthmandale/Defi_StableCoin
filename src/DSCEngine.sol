@@ -118,8 +118,10 @@ contract DSCEngine is ReentrancyGuard {
         pure
         returns (uint256)
     {
-        if (totalDscMinted == 0) return type(uint256).max;
+        if (totalDscMinted == 0) return type(uint256).max; // if 0 dsc minted then no need to check health factor
+        // uint256 collateralAdjustedForThreshold = (collateralValueInUsd * 50) / 100;
         uint256 collateralAdjustedForThreshold = (collateralValueInUsd * LIQUIDATION_THRESHOLD) / LIQUIDATION_PRECISION;
+        //     return (collateralAdjustedForThreshold * 1e18) / totalDscMinted;
         return (collateralAdjustedForThreshold * PRECISION) / totalDscMinted;
     }
 
@@ -139,7 +141,8 @@ contract DSCEngine is ReentrancyGuard {
         // 1 ETH = 1000 USD
         // The returned value from Chainlink will be 1000 * 1e8 - becaise 8 decimals
         // Most USD pairs have 8 decimals, so we will just pretend they all do
-        // We want to have everything in terms of WEI, so we add 10 zeros at the end
+        // We want to have everything in terms of WEI - 1e18, so we add 10 zeros at the end
+        // return (uint256(price) * 1e10 * amount) / 1e18;
         return ((uint256(price) * ADDITIONAL_FEED_PRECISION) * amount) / PRECISION;
     }
 
@@ -169,28 +172,31 @@ contract DSCEngine is ReentrancyGuard {
     }
 
     function _redeemCollateral(address tokenCollateralAddress, uint256 amountCollateral, address from, address to)
-        private
+        private // here from and to is used because if the user(`from`) is liquidated then the collateral will be redeemed ('to') the liquidator
     {
         s_collateralDeposited[from][tokenCollateralAddress] -= amountCollateral;
         emit CollateralRedeemed(from, to, tokenCollateralAddress, amountCollateral);
         bool success = IERC20(tokenCollateralAddress).transfer(to, amountCollateral);
-        // IERC20(tokenCollateralAddress) here shows that IERC20 contract need to tranfer this address token collateral only
+        //    function transfer(address to, uint256 value) external returns (bool);
+        // IERC20 transfer function returning bool -> IERC20(tokenCollateralAddress) here shows that IERC20 contract need to tranfer this address token collateral only
         if (!success) {
             revert DSCEngine__TransferFailed();
         }
     }
 
     function burnDSC(uint256 amount) public moreThanZero(amount) {
-        // here burn means u r returning the DSC to the contract
-
+        // here burn means u r returning the DSC to the contract, and later u can redeem the collateral
         _burnDsc(amount, msg.sender, msg.sender);
-
         //  _revertIfHealthFactorIsBroken(msg.sender);   // this might not ever been called
     }
 
     function _burnDsc(uint256 amountDscToBurn, address onBehalfOf, address dscFrom) private {
+        //  on beHalf of is the user from whose dcs will be minted and dscFrom is the user who is burning the dsc of that user
+        // , but as of now both are same - msg.sender - so user will burn his own dsc
         s_DSCMinted[onBehalfOf] -= amountDscToBurn;
 
+        // herer transferFrom will be because the (dscFrom) will give his dsc token to the contract(pool) the dsc of user(onBehalOf) and the dsc will be transfered to the contract
+        // DOUBT
         bool success = i_dsc.transferFrom(dscFrom, address(this), amountDscToBurn);
         // This conditional is hypothetically unreachable
         if (!success) {
@@ -199,32 +205,34 @@ contract DSCEngine is ReentrancyGuard {
         i_dsc.burn(amountDscToBurn);
     }
 
-    function getTokenAmountfromUsd(address token, uint256 usdAmountInWei) public view returns (uint256) {
+    function getTokenAmountFromUsd(address token, uint256 usdAmountInWei) public view returns (uint256) {
         // price of ETH (token)
         AggregatorV3Interface priceFeed = AggregatorV3Interface(s_priceFeeds[token]);
         (, int256 price,,,) = priceFeed.latestRoundData();
-
+        //  return (usdAmountInWei * 1e18) / uint256(price) * 1e10;
         return (usdAmountInWei * PRECISION) / uint256(price) * ADDITIONAL_FEED_PRECISION;
     }
 
+    // redeemCollateralForDSC - this function is used when the user wants to redeem the collateral and burn the dsc at the same time
     function redeemCollateralForDSC(address tokenCollateralAddress, uint256 amountCollateral, uint256 amountToBurn)
         external
     {
         burnDSC(amountToBurn);
         redeemCollateral(tokenCollateralAddress, amountCollateral);
+        // here health factor will be checked by the brunDSC and redeemCollateral function
     }
 
-    function liquidate(address collateral, address user, uint256 debtToCover)
-        external
-        moreThanZero(debtToCover)
-        nonReentrant
-    {
+    function liquidate(
+        address collateral,
+        address user,
+        uint256 debtToCover // debtToCover is the amount of dsc to be covered
+    ) external moreThanZero(debtToCover) nonReentrant {
         uint256 startingUserHealthFactor = _healthFactor(user);
         if (startingUserHealthFactor >= MIN_HEALTH_FACTOR) {
             revert DSCEngine__HealthFactorOk();
         }
-        // If covering 100 DSC, we need to $100 of collateral
-        uint256 tokenAmountFromDebtCovered = getTokenAmountfromUsd(collateral, debtToCover);
+        // just example - If covering 100 DSC, we need to $100 of collateral
+        uint256 tokenAmountFromDebtCovered = getTokenAmountFromUsd(collateral, debtToCover);
         // And give them a 10% bonus
         // So we are giving the liquidator $110 of WETH for 100 DSC
         // We should implement a feature to liquidate in the event the protocol is insolvent
