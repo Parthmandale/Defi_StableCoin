@@ -101,7 +101,7 @@ contract DSCEngine is ReentrancyGuard {
 
     function _healthFactor(address user) internal view returns (uint256) {
         (uint256 totalDscMinted, uint256 collateralValueInUsd) = _getAccountInformation(user);
-        return _calculateHealthFactor(totalDscMinted, collateralValueInUsd);
+        return calculateHealthFactor(totalDscMinted, collateralValueInUsd);
     }
 
     function _getAccountInformation(address user)
@@ -113,12 +113,20 @@ contract DSCEngine is ReentrancyGuard {
         collateralValueInUsd = getAccountCollateralValue(user);
     }
 
-    function _calculateHealthFactor(uint256 totalDscMinted, uint256 collateralValueInUsd)
-        internal
+    function getAccountInformation(address user)
+        external
+        view
+        returns (uint256 totalDscMinted, uint256 collateralValueInUsd)
+    {
+        (totalDscMinted, collateralValueInUsd) = _getAccountInformation(user);
+    }
+
+    function calculateHealthFactor(uint256 totalDscMinted, uint256 collateralValueInUsd)
+        public
         pure
         returns (uint256)
     {
-        if (totalDscMinted == 0) return type(uint256).max; // if 0 dsc minted then no need to check health factor
+        if (totalDscMinted == 0) return type(uint256).max; // if 0 dsc minted then health factor is going to the max(bigest as possible)
         // uint256 collateralAdjustedForThreshold = (collateralValueInUsd * 50) / 100;
         uint256 collateralAdjustedForThreshold = (collateralValueInUsd * LIQUIDATION_THRESHOLD) / LIQUIDATION_PRECISION;
         //     return (collateralAdjustedForThreshold * 1e18) / totalDscMinted;
@@ -206,11 +214,13 @@ contract DSCEngine is ReentrancyGuard {
     }
 
     function getTokenAmountFromUsd(address token, uint256 usdAmountInWei) public view returns (uint256) {
-        // price of ETH (token)
         AggregatorV3Interface priceFeed = AggregatorV3Interface(s_priceFeeds[token]);
         (, int256 price,,,) = priceFeed.latestRoundData();
-        //  return (usdAmountInWei * 1e18) / uint256(price) * 1e10;
-        return (usdAmountInWei * PRECISION) / uint256(price) * ADDITIONAL_FEED_PRECISION;
+        // $100e18 USD Debt
+        // 1 ETH = 2000 USD
+        // The returned value from Chainlink will be 2000 * 1e8
+        // Most USD pairs have 8 decimals, so we will just pretend they all do
+        return ((usdAmountInWei * PRECISION) / (uint256(price) * ADDITIONAL_FEED_PRECISION));
     }
 
     // redeemCollateralForDSC - this function is used when the user wants to redeem the collateral and burn the dsc at the same time
