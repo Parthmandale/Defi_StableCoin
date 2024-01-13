@@ -29,6 +29,9 @@ contract DSCEngineTest is Test {
     uint256 public amountCollateral = 10 ether;
     uint256 public constant STARTING_USER_BALANCE = 10 ether;
     uint256 amountToMint = 100 ether;
+    // liquidation
+    address public liquidator = makeAddr("liquidator");
+    uint256 public collateralToCover = 20 ether;
 
     function setUp() public {
         deployer = new DeployDSC();
@@ -269,7 +272,6 @@ contract DSCEngineTest is Test {
     }
 
     // redeemCollateralForDsc
-
     function testMustRedeemMoreThanZero() public depositedCollateralAndMintedDsc {
         vm.startPrank(user);
         // approves to spend this much amount to address(dsce)
@@ -291,6 +293,64 @@ contract DSCEngineTest is Test {
         // here ERC20 checks for balance of token user owns not ho much ether he has
         uint256 userBal = dsc.balanceOf(user);
         assertEq(userBal, 0);
+    }
+
+    // healthFactor Tests //
+    function testProperlyReportsHealthFactor() public depositedCollateralAndMintedDsc {
+        /*
+    // uint256 collateralAdjustedForThreshold = (collateralValueInUsd * 50) / 100;
+        uint256 collateralAdjustedForThreshold = (collateralValueInUsd * LIQUIDATION_THRESHOLD) / LIQUIDATION_PRECISION;
+        //     return (collateralAdjustedForThreshold * 1e18) / totalDscMinted;
+        return (collateralAdjustedForThreshold * PRECISION) / totalDscMinted;
+        */
+        uint256 expectedHealthFactor = 100 ether;
+        // $100 minted with $20,000 collateral at 50% liquidation threshold
+        // means that we must have $200 collatareral at all times.
+        // 20,000 * 0.5 = 10,000
+        // 10,000 / 100 = 100 health factor
+        uint256 actualHealthFactor = dsce.getHealthFactor(user);
+        assertEq(expectedHealthFactor, actualHealthFactor);
+    }
+
+    function testHealthFactorCanBeBelow1() public depositedCollateralAndMintedDsc {
+        int256 ethUsdUpdatedPrice = 18e8; // 1 ETH = $18
+        // because of 50% threshold we need to keep out collateral minimum $200(double) of our minted DSC($100)
+
+        MockV3Aggregator(ethUsdPriceFeed).updateAnswer(ethUsdUpdatedPrice);
+
+        uint256 userHealthFactor = dsce.getHealthFactor(user);
+        // error here
+        assertEq(userHealthFactor, 0.9 ether);
+    }
+
+    // Liquidation Tests /
+    modifier liquidated() {
+        vm.startPrank(user);
+        ERC20Mock(weth).approve(address(dsce), amountCollateral);
+        dsce.depositCollateralAndMintDsc(weth, amountCollateral, amountToMint);
+        vm.stopPrank();
+        int256 ethUsdUpdatedPrice = 18e8; // 1 ETH = $18
+
+        MockV3Aggregator(ethUsdPriceFeed).updateAnswer(ethUsdUpdatedPrice);
+        uint256 userHealthFactor = dsce.getHealthFactor(user);
+
+        ERC20Mock(weth).mint(liquidator, collateralToCover);
+
+        vm.startPrank(liquidator);
+        ERC20Mock(weth).approve(address(dsce), collateralToCover);
+        dsce.depositCollateralAndMintDsc(weth, collateralToCover, amountToMint);
+        dsce.liquidate(weth, user, amountToMint); // covering full debt
+        vm.stopPrank();
+        _;
+    }
+
+    function testLiquidationPayoutIsCorrect() public liquidated {
+        uint256 liquidatorWethBalance = ERC20Mock(weth).balanceOf(liquidator);
+        uint256 expectedWeth = dsce.getTokenAmountFromUsd(weth, amountToMint)
+            + (dsce.getTokenAmountFromUsd(weth, amountToMint) / dsce.getLiquidationBonus());
+        uint256 hardCodedExpected = 6111111111111111110;
+        assertEq(liquidatorWethBalance, hardCodedExpected);
+        assertEq(liquidatorWethBalance, expectedWeth);
     }
 }
 // ----------------------------------------------------------------------------------------------------
